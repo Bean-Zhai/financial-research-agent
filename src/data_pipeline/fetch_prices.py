@@ -6,37 +6,11 @@ import requests
 from dotenv import load_dotenv
 
 
-load_dotenv()
+TICKERS = ["AAPL", "MSFT", "NVDA"]
+START_DATE = "2022-01-01"
+END_DATE = "2025-12-31"
 
-api_key = os.getenv("TIINGO_API_KEY")
-
-if not api_key:
-    raise ValueError("TIINGO_API_KEY was not found in the .env file.")
-
-url = "https://api.tiingo.com/tiingo/daily/AAPL/prices"
-
-headers = {
-    "Authorization": f"Token {api_key}"
-}
-
-params = {
-    "startDate": "2022-01-01",
-    "endDate": "2025-12-31"
-}
-
-response = requests.get(
-    url,
-    headers=headers,
-    params=params,
-    timeout=30
-)
-
-response.raise_for_status()
-
-data = response.json()
-prices = pd.DataFrame(data)
-
-selected_columns = [
+SELECTED_COLUMNS = [
     "date",
     "open",
     "high",
@@ -46,60 +20,115 @@ selected_columns = [
     "volume"
 ]
 
-prices = prices[selected_columns].copy()
 
-prices = prices.rename(
-    columns={
-        "adjClose": "adjusted_close"
+def process_ticker(ticker, api_key):
+    url = f"https://api.tiingo.com/tiingo/daily/{ticker}/prices"
+
+    headers = {
+        "Authorization": f"Token {api_key}"
     }
-)
 
-prices.insert(0, "ticker", "AAPL")
+    params = {
+        "startDate": START_DATE,
+        "endDate": END_DATE
+    }
 
-prices["date"] = pd.to_datetime(
-    prices["date"],
-    utc=True
-)
+    response = requests.get(
+        url,
+        headers=headers,
+        params=params,
+        timeout=30
+    )
 
-prices = prices.sort_values("date")
-prices = prices.reset_index(drop=True)
+    response.raise_for_status()
 
-missing_values = prices.isna().sum()
-duplicate_dates = prices.duplicated(
-    subset=["ticker", "date"]
-).sum()
+    data = response.json()
+    prices = pd.DataFrame(data)
 
-print("HTTP status:", response.status_code)
-print("Data shape:", prices.shape)
-print("\nFirst five rows:")
-print(prices.head().to_string(index=False))
+    if prices.empty:
+        raise ValueError(f"No price data was returned for {ticker}.")
 
-print("\nColumn data types:")
-print(prices.dtypes)
+    prices = prices[SELECTED_COLUMNS].copy()
 
-print("\nMissing values:")
-print(missing_values)
+    prices = prices.rename(
+        columns={
+            "adjClose": "adjusted_close"
+        }
+    )
 
-print("\nDuplicate ticker-date rows:", duplicate_dates)
-print(
-    "Date range:",
-    prices["date"].min(),
-    "to",
-    prices["date"].max()
-)
+    prices.insert(0, "ticker", ticker)
 
-project_root = Path(__file__).resolve().parents[2]
+    prices["date"] = pd.to_datetime(
+        prices["date"],
+        utc=True
+    )
 
-output_directory = project_root / "data" / "processed"
-output_directory.mkdir(parents=True, exist_ok=True)
+    prices = prices.sort_values("date")
+    prices = prices.reset_index(drop=True)
 
-output_file = output_directory / "AAPL_prices_2022_2025.csv"
+    missing_values = prices.isna().sum()
+    duplicate_rows = prices.duplicated(
+        subset=["ticker", "date"]
+    ).sum()
 
-prices.to_csv(
-    output_file,
-    index=False,
-    date_format="%Y-%m-%d"
-)
+    if missing_values.any():
+        raise ValueError(
+            f"Missing values were found for {ticker}:\n"
+            f"{missing_values}"
+        )
 
-print("\nData saved to:")
-print(output_file)
+    if duplicate_rows > 0:
+        raise ValueError(
+            f"{duplicate_rows} duplicate rows were found for {ticker}."
+        )
+
+    project_root = Path(__file__).resolve().parents[2]
+    output_directory = project_root / "data" / "processed"
+    output_directory.mkdir(parents=True, exist_ok=True)
+
+    start_year = START_DATE[:4]
+    end_year = END_DATE[:4]
+
+    output_file = (
+        output_directory
+        / f"{ticker}_prices_{start_year}_{end_year}.csv"
+    )
+
+    prices.to_csv(
+        output_file,
+        index=False,
+        date_format="%Y-%m-%d"
+    )
+
+    print(f"\nCompleted: {ticker}")
+    print(f"Rows: {len(prices)}")
+    print(
+        "Date range:",
+        prices["date"].min(),
+        "to",
+        prices["date"].max()
+    )
+    print(f"Saved to: {output_file}")
+
+    return prices
+
+
+def main():
+    load_dotenv()
+
+    api_key = os.getenv("TIINGO_API_KEY")
+
+    if not api_key:
+        raise ValueError(
+            "TIINGO_API_KEY was not found in the .env file."
+        )
+
+    for ticker in TICKERS:
+        process_ticker(
+            ticker=ticker,
+            api_key=api_key
+        )
+
+
+if __name__ == "__main__":
+    main()
