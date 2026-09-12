@@ -184,6 +184,46 @@ def compare_stocks(tickers):
         },
     }
 
+def get_available_stocks():
+    with sqlite3.connect(DATABASE_PATH) as connection:
+        stock_summary = pd.read_sql_query(
+            """
+            SELECT
+                ticker,
+                COUNT(*) AS trading_days,
+                MIN(date) AS start_date,
+                MAX(date) AS end_date
+            FROM daily_prices
+            GROUP BY ticker
+            ORDER BY ticker;
+            """,
+            connection,
+        )
+
+    if stock_summary.empty:
+        return {
+            "success": False,
+            "error": "数据库中暂时没有股票数据。",
+        }
+
+    stocks = []
+
+    for _, row in stock_summary.iterrows():
+        stocks.append(
+            {
+                "ticker": row["ticker"],
+                "trading_days": int(row["trading_days"]),
+                "start_date": row["start_date"],
+                "end_date": row["end_date"],
+            }
+        )
+
+    return {
+        "success": True,
+        "number_of_stocks": len(stocks),
+        "stocks": stocks,
+    }
+
 if __name__ == "__main__":
     print("1. Single-stock metrics:")
     print(get_stock_metrics("AAPL"))

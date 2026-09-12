@@ -7,6 +7,7 @@ from openai import OpenAI
 
 from src.agent.tools import (
     compare_stocks,
+    get_available_stocks,
     get_latest_prices,
     get_stock_metrics,
 )
@@ -35,8 +36,13 @@ MODEL_NAME = "glm-4-flash-250414"
 SYSTEM_PROMPT = """
 你是一个金融数据研究助手。
 
-项目数据库目前包含AAPL、MSFT和NVDA从2022-01-03
-到2025-12-31的历史日度数据。
+项目使用SQLite数据库保存历史股票数据。不要假设数据库
+包含哪些股票，必要时应调用get_available_stocks进行查询。
+
+当用户询问“有哪些股票”“全部股票”或者没有明确给出
+股票代码便询问“哪只股票最好”时，应先调用
+get_available_stocks。如果还需要比较，再根据查询到的
+股票代码调用compare_stocks。
 
 你可以使用工具查询价格、分析单只股票，或者比较多只股票。
 
@@ -53,6 +59,20 @@ SYSTEM_PROMPT = """
 
 
 TOOL_DEFINITIONS = [
+    {
+        "type": "function",
+         "function": {
+            "name": "get_available_stocks",
+            "description": (
+                "查询数据库目前包含哪些股票，"
+                "以及每只股票的数据日期范围和交易日数量。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {},
+            },
+        },
+    },
     {
         "type": "function",
         "function": {
@@ -131,6 +151,7 @@ TOOL_DEFINITIONS = [
 
 
 TOOL_FUNCTIONS = {
+    "get_available_stocks": get_available_stocks,
     "get_stock_metrics": get_stock_metrics,
     "get_latest_prices": get_latest_prices,
     "compare_stocks": compare_stocks,
