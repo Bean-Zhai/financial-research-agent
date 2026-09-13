@@ -6,12 +6,12 @@ from dotenv import load_dotenv
 from openai import OpenAI
 
 from src.agent.tools import (
+    calculate_correlation,
     compare_stocks,
     get_available_stocks,
     get_latest_prices,
     get_stock_metrics,
 )
-
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 ENV_PATH = PROJECT_ROOT / ".env"
@@ -57,6 +57,8 @@ get_available_stocks。如果还需要比较，再根据查询到的
 8. 累计收益率为520%表示期末价值约为期初的6.2倍，或者盈利约为初始投入的5.2倍。
 9. 如果用户指定某一年，例如“2024年”，应将开始日期设置为2024-01-01，结束日期设置为2024-12-31。
 10. 回答时应使用工具实际返回的首个和最后一个交易日，不要把休市日称为交易日。
+11. 股票相关性必须解释为每日收益率之间的相关性，不能表述为股价水平之间的相关性。
+12. 较低的相关性通常意味着相对更好的分散化效果，但不能仅凭相关系数作出投资决策。
 """
 
 
@@ -177,6 +179,43 @@ TOOL_DEFINITIONS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "calculate_correlation",
+            "description": (
+                "计算两只或多只股票每日收益率之间的"
+                "相关系数，并找出相关性最高和最低的组合。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "tickers": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                        },
+                        "description": (
+                            "需要进行相关性分析的股票代码列表。"
+                        ),
+                    },
+                    "start_date": {
+                        "type": "string",
+                        "description": (
+                            "分析开始日期，使用YYYY-MM-DD格式。"
+                        ),
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": (
+                        "   分析结束日期，使用YYYY-MM-DD格式。"
+                        ),
+                    },
+                },
+                "required": ["tickers"],
+            },
+        },
+    },
 ]
 
 
@@ -185,6 +224,7 @@ TOOL_FUNCTIONS = {
     "get_stock_metrics": get_stock_metrics,
     "get_latest_prices": get_latest_prices,
     "compare_stocks": compare_stocks,
+    "calculate_correlation": calculate_correlation,
 }
 
 

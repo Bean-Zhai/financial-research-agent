@@ -288,9 +288,134 @@ def get_available_stocks():
         "stocks": stocks,
     }
 
+def calculate_correlation(
+    tickers,
+    start_date=None,
+    end_date=None,
+):
+    cleaned_tickers = list(
+        dict.fromkeys(
+            ticker.strip().upper()
+            for ticker in tickers
+        )
+    )
+
+    if len(cleaned_tickers) < 2:
+        return {
+            "success": False,
+            "error": "相关性分析至少需要两只股票。",
+        }
+
+    placeholders = ",".join(
+        "?" for _ in cleaned_tickers
+    )
+
+    query = f"""
+        SELECT
+            ticker,
+            date,
+            adjusted_close
+        FROM daily_prices
+        WHERE ticker IN ({placeholders})
+    """
+
+    parameters = cleaned_tickers.copy()
+
+    if start_date is not None:
+        query += " AND date >= ?"
+        parameters.append(start_date)
+
+    if end_date is not None:
+        query += " AND date <= ?"
+        parameters.append(end_date)
+
+    query += " ORDER BY date;"
+
+    with sqlite3.connect(DATABASE_PATH) as connection:
+        prices = pd.read_sql_query(
+            query,
+            connection,
+            params=parameters,
+            parse_dates=["date"],
+        )
+
+    price_table = prices.pivot(
+        index="date",
+        columns="ticker",
+        values="adjusted_close",
+    )
+
+    if len(price_table.columns) < 2:
+        return {
+            "success": False,
+            "error": (
+                "数据库中没有足够的股票数据"
+                "进行相关性分析。"
+            ),
+        }
+
+    daily_returns = price_table.pct_change(
+        fill_method=None
+    )
+
+    correlation_matrix = daily_returns.corr()
+
+    correlation_pairs = []
+
+    columns = list(correlation_matrix.columns)
+
+    for first_index in range(len(columns)):
+        for second_index in range(
+            first_index + 1,
+            len(columns),
+        ):
+            first_ticker = columns[first_index]
+            second_ticker = columns[second_index]
+
+            correlation = correlation_matrix.loc[
+                first_ticker,
+                second_ticker,
+            ]
+
+            correlation_pairs.append(
+                {
+                    "first_ticker": first_ticker,
+                    "second_ticker": second_ticker,
+                    "correlation": round(
+                        float(correlation),
+                        4,
+                    ),
+                }
+            )
+
+    highest_pair = max(
+        correlation_pairs,
+        key=lambda item: item["correlation"],
+    )
+
+    lowest_pair = min(
+        correlation_pairs,
+        key=lambda item: item["correlation"],
+    )
+
+    return {
+        "success": True,
+        "start_date": (
+            price_table.index.min().strftime("%Y-%m-%d")
+        ),
+        "end_date": (
+            price_table.index.max().strftime("%Y-%m-%d")
+        ),
+        "correlation_matrix": (
+            correlation_matrix.round(4).to_dict()
+        ),
+        "highest_correlation_pair": highest_pair,
+        "lowest_correlation_pair": lowest_pair,
+    }
+
 if __name__ == "__main__":
-    result = get_stock_metrics(
-        ticker="AAPL",
+    result = calculate_correlation(
+        tickers=["AAPL", "MSFT", "NVDA"],
         start_date="2024-01-01",
         end_date="2024-12-31",
     )
