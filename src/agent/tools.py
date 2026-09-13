@@ -413,9 +413,155 @@ def calculate_correlation(
         "lowest_correlation_pair": lowest_pair,
     }
 
+def analyze_rolling_volatility(
+    tickers,
+    windows=None,
+    start_date=None,
+    end_date=None,
+):
+    if windows is None:
+        windows = [20, 60]
+
+    cleaned_tickers = list(
+        dict.fromkeys(
+            ticker.strip().upper()
+            for ticker in tickers
+        )
+    )
+
+    valid_windows = [
+        window
+        for window in windows
+        if isinstance(window, int) and window >= 2
+    ]
+
+    if not cleaned_tickers:
+        return {
+            "success": False,
+            "error": "请至少提供一只股票。",
+        }
+
+    if not valid_windows:
+        return {
+            "success": False,
+            "error": "滚动窗口必须是大于等于2的整数。",
+        }
+
+    placeholders = ",".join(
+        "?" for _ in cleaned_tickers
+    )
+
+    query = f"""
+        SELECT
+            ticker,
+            date,
+            adjusted_close
+        FROM daily_prices
+        WHERE ticker IN ({placeholders})
+    """
+
+    parameters = cleaned_tickers.copy()
+
+    if start_date is not None:
+        query += " AND date >= ?"
+        parameters.append(start_date)
+
+    if end_date is not None:
+        query += " AND date <= ?"
+        parameters.append(end_date)
+
+    query += " ORDER BY date;"
+
+    with sqlite3.connect(DATABASE_PATH) as connection:
+        prices = pd.read_sql_query(
+            query,
+            connection,
+            params=parameters,
+            parse_dates=["date"],
+        )
+
+    if prices.empty:
+        return {
+            "success": False,
+            "error": "指定区间内没有可用的股票数据。",
+        }
+
+    price_table = prices.pivot(
+        index="date",
+        columns="ticker",
+        values="adjusted_close",
+    )
+
+    daily_returns = price_table.pct_change(
+        fill_method=None
+    )
+
+    results = {}
+
+    for ticker in daily_returns.columns:
+        ticker_results = {}
+
+        for window in valid_windows:
+            rolling_volatility = (
+                daily_returns[ticker]
+                .rolling(window=window)
+                .std()
+                * np.sqrt(TRADING_DAYS_PER_YEAR)
+            )
+
+            valid_values = rolling_volatility.dropna()
+
+            if valid_values.empty:
+                continue
+
+            peak_date = valid_values.idxmax()
+            latest_date = valid_values.index[-1]
+
+            ticker_results[f"{window}_day"] = {
+                "latest_volatility": round(
+                    float(valid_values.iloc[-1]),
+                    4,
+                ),
+                "latest_date": latest_date.strftime(
+                    "%Y-%m-%d"
+                ),
+                "peak_volatility": round(
+                    float(valid_values.max()),
+                    4,
+                ),
+                "peak_date": peak_date.strftime(
+                    "%Y-%m-%d"
+                ),
+            }
+
+        if ticker_results:
+            results[ticker] = ticker_results
+
+    if not results:
+        return {
+            "success": False,
+            "error": (
+                "数据量不足，无法按照指定窗口"
+                "计算滚动波动率。"
+            ),
+        }
+
+    return {
+        "success": True,
+        "start_date": (
+            price_table.index.min().strftime("%Y-%m-%d")
+        ),
+        "end_date": (
+            price_table.index.max().strftime("%Y-%m-%d")
+        ),
+        "windows": valid_windows,
+        "results": results,
+    }
+
 if __name__ == "__main__":
-    result = calculate_correlation(
+    result = analyze_rolling_volatility(
         tickers=["AAPL", "MSFT", "NVDA"],
+        windows=[20, 60],
         start_date="2024-01-01",
         end_date="2024-12-31",
     )

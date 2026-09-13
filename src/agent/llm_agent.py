@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from openai import OpenAI
 
 from src.agent.tools import (
+    analyze_rolling_volatility,
     calculate_correlation,
     compare_stocks,
     get_available_stocks,
@@ -59,6 +60,9 @@ get_available_stocks。如果还需要比较，再根据查询到的
 10. 回答时应使用工具实际返回的首个和最后一个交易日，不要把休市日称为交易日。
 11. 股票相关性必须解释为每日收益率之间的相关性，不能表述为股价水平之间的相关性。
 12. 较低的相关性通常意味着相对更好的分散化效果，但不能仅凭相关系数作出投资决策。
+13. 20日滚动波动率大致反映近期一个月的风险，60日滚动波动率大致反映近期一个季度的风险。
+14. 滚动波动率越高表示收益率波动越剧烈，但它不直接代表股票一定会亏损。
+15. 回答滚动波动率问题时，应说明峰值日期和窗口长度。
 """
 
 
@@ -217,7 +221,55 @@ TOOL_DEFINITIONS = [
         },
     },
 ]
-
+TOOL_DEFINITIONS.append(
+    {
+        "type": "function",
+        "function": {
+            "name": "analyze_rolling_volatility",
+            "description": (
+                "计算股票在不同滚动窗口下的年化波动率，"
+                "并找出波动率峰值及其日期。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "tickers": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                        },
+                        "description": (
+                            "需要分析的股票代码列表。"
+                        ),
+                    },
+                    "windows": {
+                        "type": "array",
+                        "items": {
+                            "type": "integer",
+                        },
+                        "description": (
+                            "滚动窗口，例如20日和60日。"
+                            "用户未指定时使用20日和60日。"
+                        ),
+                    },
+                    "start_date": {
+                        "type": "string",
+                        "description": (
+                            "分析开始日期，使用YYYY-MM-DD格式。"
+                        ),
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": (
+                            "分析结束日期，使用YYYY-MM-DD格式。"
+                        ),
+                    },
+                },
+                "required": ["tickers"],
+            },
+        },
+    }
+)
 
 TOOL_FUNCTIONS = {
     "get_available_stocks": get_available_stocks,
@@ -225,8 +277,35 @@ TOOL_FUNCTIONS = {
     "get_latest_prices": get_latest_prices,
     "compare_stocks": compare_stocks,
     "calculate_correlation": calculate_correlation,
+    "analyze_rolling_volatility": analyze_rolling_volatility,
 }
 
+def build_system_prompt():
+    stock_result = get_available_stocks()
+
+    if not stock_result["success"]:
+        return SYSTEM_PROMPT
+
+    available_tickers = [
+        stock["ticker"]
+        for stock in stock_result["stocks"]
+    ]
+
+    ticker_text = ", ".join(available_tickers)
+
+    database_context = f"""
+
+当前数据库实际包含的股票代码为：{ticker_text}。
+
+当用户说“这些股票”“全部股票”或“三只股票”，但没有
+明确列出代码时，必须使用上述全部股票。不得自行从常识
+中选择或补充其他股票代码。
+
+如果用户明确查询列表之外的股票，可以调用工具验证，
+但不能编造不存在的数据。
+"""
+
+    return SYSTEM_PROMPT + database_context
 
 def execute_tool(tool_name, arguments):
     if tool_name not in TOOL_FUNCTIONS:
@@ -308,11 +387,11 @@ def main():
     print("输入 clear 可以清除对话记忆。\n")
 
     messages = [
-        {
-            "role": "system",
-            "content": SYSTEM_PROMPT,
-        }
-    ]
+    {
+        "role": "system",
+        "content": build_system_prompt(),
+    }
+]
 
     while True:
         question = input("你：").strip()
@@ -325,7 +404,7 @@ def main():
             messages = [
                 {
                     "role": "system",
-                    "content": SYSTEM_PROMPT,
+                    "content": build_system_prompt(),
                 }
             ]
 
