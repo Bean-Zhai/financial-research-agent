@@ -55,17 +55,19 @@ get_available_stocks。如果还需要比较，再根据查询到的
 6. 夏普比率越高，表示单位波动风险获得的历史收益越高，不能直接解释为股票本身风险更低。
 7. 最大回撤为负数，绝对值越大代表历史亏损幅度越严重。
 8. 累计收益率为520%表示期末价值约为期初的6.2倍，或者盈利约为初始投入的5.2倍。
+9. 如果用户指定某一年，例如“2024年”，应将开始日期设置为2024-01-01，结束日期设置为2024-12-31。
+10. 回答时应使用工具实际返回的首个和最后一个交易日，不要把休市日称为交易日。
 """
 
 
 TOOL_DEFINITIONS = [
     {
         "type": "function",
-         "function": {
+        "function": {
             "name": "get_available_stocks",
             "description": (
                 "查询数据库目前包含哪些股票，"
-                "以及每只股票的数据日期范围和交易日数量。"
+                "以及每只股票的数据范围和交易日数量。"
             ),
             "parameters": {
                 "type": "object",
@@ -79,7 +81,7 @@ TOOL_DEFINITIONS = [
             "name": "get_stock_metrics",
             "description": (
                 "查询并计算一只股票的累计收益率、"
-                "年化波率、夏普比率和最大回撤。"
+                "年化波动率、夏普比率和最大回撤。"
             ),
             "parameters": {
                 "type": "object",
@@ -89,7 +91,21 @@ TOOL_DEFINITIONS = [
                         "description": (
                             "股票代码，例如AAPL、MSFT或NVDA。"
                         ),
-                    }
+                    },
+                    "start_date": {
+                        "type": "string",
+                        "description": (
+                            "分析开始日期，使用YYYY-MM-DD格式。"
+                            "用户没有指定时不要传入。"
+                        ),
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": (
+                            "分析结束日期，使用YYYY-MM-DD格式。"
+                            "用户没有指定时不要传入。"
+                        ),
+                    },
                 },
                 "required": ["ticker"],
             },
@@ -141,7 +157,21 @@ TOOL_DEFINITIONS = [
                         "description": (
                             "需要比较的股票代码列表。"
                         ),
-                    }
+                    },
+                    "start_date": {
+                        "type": "string",
+                        "description": (
+                            "比较开始日期，使用YYYY-MM-DD格式。"
+                            "用户没有指定时不要传入。"
+                        ),
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": (
+                            "比较结束日期，使用YYYY-MM-DD格式。"
+                            "用户没有指定时不要传入。"
+                        ),
+                    },
                 },
                 "required": ["tickers"],
             },

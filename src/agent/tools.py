@@ -4,6 +4,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from datetime import date
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATABASE_PATH = PROJECT_ROOT / "database" / "financial_data.db"
@@ -11,28 +13,76 @@ DATABASE_PATH = PROJECT_ROOT / "database" / "financial_data.db"
 TRADING_DAYS_PER_YEAR = 252
 
 
-def get_stock_metrics(ticker):
+def get_stock_metrics(
+    ticker,
+    start_date=None,
+    end_date=None,
+):
     ticker = ticker.strip().upper()
+
+    for date_value in [start_date, end_date]:
+        if date_value is not None:
+            try:
+                date.fromisoformat(date_value)
+            except ValueError:
+                return {
+                    "success": False,
+                    "error": (
+                        "日期格式错误，请使用YYYY-MM-DD格式。"
+                    ),
+                }
+
+    if (
+        start_date is not None
+        and end_date is not None
+        and start_date > end_date
+    ):
+        return {
+            "success": False,
+            "error": "开始日期不能晚于结束日期。",
+        }
+
+    query = """
+        SELECT
+            date,
+            adjusted_close
+        FROM daily_prices
+        WHERE ticker = ?
+    """
+
+    parameters = [ticker]
+
+    if start_date is not None:
+        query += " AND date >= ?"
+        parameters.append(start_date)
+
+    if end_date is not None:
+        query += " AND date <= ?"
+        parameters.append(end_date)
+
+    query += " ORDER BY date;"
 
     with sqlite3.connect(DATABASE_PATH) as connection:
         prices = pd.read_sql_query(
-            """
-            SELECT
-                date,
-                adjusted_close
-            FROM daily_prices
-            WHERE ticker = ?
-            ORDER BY date;
-            """,
+            query,
             connection,
-            params=(ticker,),
+            params=parameters,
             parse_dates=["date"],
         )
 
     if prices.empty:
         return {
             "success": False,
-            "error": f"数据库中没有找到股票 {ticker}。",
+            "error": (
+                f"数据库中没有找到股票{ticker}"
+                "在指定区间内的数据。"
+            ),
+        }
+
+    if len(prices) < 2:
+        return {
+            "success": False,
+            "error": "至少需要两个交易日才能计算收益指标。",
         }
 
     daily_returns = (
@@ -65,8 +115,12 @@ def get_stock_metrics(ticker):
     return {
         "success": True,
         "ticker": ticker,
-        "start_date": prices["date"].iloc[0].strftime("%Y-%m-%d"),
-        "end_date": prices["date"].iloc[-1].strftime("%Y-%m-%d"),
+        "start_date": (
+            prices["date"].iloc[0].strftime("%Y-%m-%d")
+        ),
+        "end_date": (
+            prices["date"].iloc[-1].strftime("%Y-%m-%d")
+        ),
         "trading_days": len(prices),
         "start_price": round(float(start_price), 2),
         "end_price": round(float(end_price), 2),
@@ -136,11 +190,19 @@ def get_latest_prices(ticker, limit=5):
         "prices": price_records,
     }
 
-def compare_stocks(tickers):
+def compare_stocks(
+    tickers,
+    start_date=None,
+    end_date=None,
+):
     stock_results = []
 
     for ticker in tickers:
-        result = get_stock_metrics(ticker)
+        result = get_stock_metrics(
+            ticker=ticker,
+            start_date=start_date,
+            end_date=end_date,
+        )
 
         if result["success"]:
             stock_results.append(result)
@@ -148,7 +210,9 @@ def compare_stocks(tickers):
     if not stock_results:
         return {
             "success": False,
-            "error": "没有找到可以比较的股票数据。",
+            "error": (
+                "指定股票在该日期区间内没有可比较的数据。"
+            ),
         }
 
     highest_return = max(
@@ -225,11 +289,10 @@ def get_available_stocks():
     }
 
 if __name__ == "__main__":
-    print("1. Single-stock metrics:")
-    print(get_stock_metrics("AAPL"))
+    result = get_stock_metrics(
+        ticker="AAPL",
+        start_date="2024-01-01",
+        end_date="2024-12-31",
+    )
 
-    print("\n2. Latest prices:")
-    print(get_latest_prices("MSFT", 3))
-
-    print("\n3. Stock comparison:")
-    print(compare_stocks(["AAPL", "MSFT", "NVDA"]))
+    print(result)
