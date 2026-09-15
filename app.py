@@ -1,4 +1,5 @@
 import streamlit as st
+from pathlib import Path
 
 from src.agent.llm_agent import (
     ask_agent,
@@ -6,6 +7,11 @@ from src.agent.llm_agent import (
 )
 from src.agent.tools import get_available_stocks
 
+PROJECT_ROOT = Path(__file__).resolve().parent
+
+REPORT_DIRECTORY = (
+    PROJECT_ROOT / "reports" / "generated"
+)
 
 st.set_page_config(
     page_title="Financial Research Agent",
@@ -13,6 +19,21 @@ st.set_page_config(
     layout="wide",
 )
 
+def find_latest_report():
+    if not REPORT_DIRECTORY.exists():
+        return None
+
+    report_files = list(
+        REPORT_DIRECTORY.glob("*.md")
+    )
+
+    if not report_files:
+        return None
+
+    return max(
+        report_files,
+        key=lambda path: path.stat().st_mtime,
+    )
 
 def initialize_session():
     if "agent_messages" not in st.session_state:
@@ -93,6 +114,26 @@ with st.sidebar:
         clear_conversation()
         st.rerun()
 
+    st.divider()
+    st.header("研究报告")
+
+    latest_report = find_latest_report()
+
+    if latest_report is not None:
+        st.caption(
+            f"最新报告：{latest_report.name}"
+        )
+
+        st.download_button(
+            label="下载最新报告",
+            data=latest_report.read_bytes(),
+            file_name=latest_report.name,
+            mime="text/markdown",
+            use_container_width=True,
+        )
+
+    else:
+        st.caption("暂时没有已生成的报告。")
 
 for message in st.session_state.display_messages:
     with st.chat_message(message["role"]):
