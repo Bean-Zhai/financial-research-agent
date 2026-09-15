@@ -13,6 +13,9 @@ from src.agent.tools import (
     get_latest_prices,
     get_stock_metrics,
 )
+from src.reporting.custom_report import (
+    generate_custom_report,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 ENV_PATH = PROJECT_ROOT / ".env"
@@ -271,6 +274,48 @@ TOOL_DEFINITIONS.append(
     }
 )
 
+TOOL_DEFINITIONS.append(
+    {
+        "type": "function",
+        "function": {
+            "name": "generate_custom_report",
+            "description": (
+                "根据指定股票和日期区间生成一份"
+                "Markdown格式的中文股票研究报告。"
+                "报告包括收益风险指标、相关性和"
+                "滚动波动率分析。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "tickers": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                        },
+                        "description": (
+                            "需要写入报告的股票代码列表。"
+                        ),
+                    },
+                    "start_date": {
+                        "type": "string",
+                        "description": (
+                            "报告开始日期，使用YYYY-MM-DD格式。"
+                        ),
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": (
+                            "报告结束日期，使用YYYY-MM-DD格式。"
+                        ),
+                    },
+                },
+                "required": ["tickers"],
+            },
+        },
+    }
+)
+
 TOOL_FUNCTIONS = {
     "get_available_stocks": get_available_stocks,
     "get_stock_metrics": get_stock_metrics,
@@ -278,6 +323,7 @@ TOOL_FUNCTIONS = {
     "compare_stocks": compare_stocks,
     "calculate_correlation": calculate_correlation,
     "analyze_rolling_volatility": analyze_rolling_volatility,
+    "generate_custom_report": generate_custom_report,
 }
 
 def build_system_prompt():
@@ -303,6 +349,13 @@ def build_system_prompt():
 
 如果用户明确查询列表之外的股票，可以调用工具验证，
 但不能编造不存在的数据。
+
+当用户明确要求“生成报告”“创建报告”或“输出研究报告”
+时，必须调用generate_custom_report，不能只在对话中
+直接写一份报告。
+
+报告生成成功后，应告诉用户实际分析股票、实际日期区间
+和报告保存路径。
 """
 
     return SYSTEM_PROMPT + database_context
