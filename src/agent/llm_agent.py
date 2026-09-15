@@ -22,12 +22,32 @@ ENV_PATH = PROJECT_ROOT / ".env"
 
 load_dotenv(ENV_PATH)
 
-api_key = os.getenv("ZHIPU_API_KEY")
+def get_api_key():
+    local_api_key = os.getenv("ZHIPU_API_KEY")
 
-if not api_key:
+    if local_api_key:
+        return local_api_key
+
+    try:
+        import streamlit as st
+
+        cloud_api_key = st.secrets.get(
+            "ZHIPU_API_KEY"
+        )
+
+        if cloud_api_key:
+            return cloud_api_key
+
+    except Exception:
+        pass
+
     raise ValueError(
-        "没有找到ZHIPU_API_KEY，请检查.env文件。"
+        "没有找到ZHIPU_API_KEY。"
+        "请检查本地.env或Streamlit Secrets。"
     )
+
+
+api_key = get_api_key()
 
 client = OpenAI(
     api_key=api_key,

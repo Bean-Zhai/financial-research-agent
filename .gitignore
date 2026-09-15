@@ -3,5 +3,4 @@ __pycache__/
 *.pyc
 .env
 data/processed/
-database/*.db
 reports/generated/

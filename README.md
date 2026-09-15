@@ -113,7 +113,7 @@ financial-research-agent/
 └── requirements-dev.txt
 ```
 
-生成的数据文件、本地 SQLite 数据库、API密钥和动态生成的报告不会被 Git 追踪。
+项目包含一个用于演示和部署的小型SQLite数据库。原始数据、处理过程中的数据文件、API密钥和动态生成的报告不会被Git追踪。
 
 ## 安装方法
 
